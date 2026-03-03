@@ -1,160 +1,199 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
-import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import api from '../services/api';
+import { z } from 'zod';
 import { useAuth } from '../hooks/useAuth';
+import { Link } from 'react-router-dom';
+import api from '../services/api';
 
-const schema = z.object({
+const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  email: z.string().email('Please enter a valid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   confirmPassword: z.string(),
-}).refine((d) => d.password === d.confirmPassword, {
-  message: "Passwords don't match",
+}).refine(data => data.password === data.confirmPassword, {
+  message: 'Passwords do not match',
   path: ['confirmPassword'],
 });
-type FormData = z.infer<typeof schema>;
 
-const GOLD = '#C9A84C';
-const BLACK = '#0A0A0B';
-const PARCHMENT = '#f5f0e8';
+type RegisterForm = z.infer<typeof registerSchema>;
 
 export default function Register() {
-  const navigate = useNavigate();
   const { login } = useAuth();
-  const [serverError, setServerError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
-    resolver: zodResolver(schema),
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<RegisterForm>({
+    resolver: zodResolver(registerSchema),
   });
 
-  const onSubmit = async (data: FormData) => {
-    setLoading(true);
-    setServerError('');
+  const onSubmit = async (data: RegisterForm) => {
     try {
       const res = await api.post('/api/auth/register', {
-        name: data.name, email: data.email, password: data.password,
+        name: data.name,
+        email: data.email,
+        password: data.password,
       });
       login(res.data.token, res.data.user);
-      navigate('/dashboard');
     } catch (err: any) {
-      setServerError(err.response?.data?.error || 'Registration failed.');
-    } finally {
-      setLoading(false);
+      console.error(err.response?.data?.error || 'Registration failed.');
     }
   };
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'DM Mono', monospace; background: ${PARCHMENT}; }
-        .sv-root { display: flex; min-height: 100vh; }
-        .sv-left { width: 48%; background: ${BLACK}; position: relative; overflow: hidden; display: flex; flex-direction: column; }
-        @media (max-width: 900px) { .sv-left { display: none; } }
-        .grid-bg { position: absolute; inset: 0; background-image: linear-gradient(rgba(201,168,76,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.07) 1px, transparent 1px); background-size: 48px 48px; }
-        .sv-input { width: 100%; background: transparent; border: none; border-bottom: 1.5px solid #ccc4b8; padding: 10px 0; font-size: 13px; font-family: 'DM Mono', monospace; color: #1a1714; outline: none; transition: border-color 0.2s; }
-        .sv-input::placeholder { color: #bbb4a8; }
-        .sv-input:focus { border-bottom-color: ${GOLD}; }
-        .sv-input.err { border-bottom-color: #e53e3e; }
-        .sv-btn { width: 100%; background: ${BLACK}; color: ${GOLD}; border: none; padding: 16px; font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 3px; text-transform: uppercase; cursor: pointer; border-radius: 4px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 10px; }
-        .sv-btn:hover:not(:disabled) { background: #1a1714; transform: translateY(-1px); }
-        .sv-btn:disabled { opacity: 0.65; cursor: not-allowed; }
-        .sv-link { color: ${GOLD}; text-decoration: none; }
-        .sv-link:hover { opacity: 0.75; }
-        .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .spinner { width: 14px; height: 14px; border: 2px solid rgba(201,168,76,0.25); border-top-color: ${GOLD}; border-radius: 50%; animation: spin 0.7s linear infinite; display: inline-block; }
-        @keyframes slideUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-        .slide-up { animation: slideUp 0.45s ease both; }
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600&display=swap');
+        .font-playfair { font-family: 'Playfair Display', serif; }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        .fade-up   { animation: fadeUp 0.6s ease both; }
+        .fade-up-1 { animation: fadeUp 0.6s ease 0.1s both; }
+        .fade-up-2 { animation: fadeUp 0.6s ease 0.2s both; }
+        .fade-up-3 { animation: fadeUp 0.6s ease 0.3s both; }
+        .fade-up-4 { animation: fadeUp 0.6s ease 0.4s both; }
+        .fade-up-5 { animation: fadeUp 0.6s ease 0.5s both; }
+        .input-field { transition: all 0.2s; }
+        .input-field:focus { outline: none; border-color: #3B82F6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+        .btn-main { transition: all 0.3s; clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%); }
+        .btn-main:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(59,130,246,0.4); background: #3B82F6 !important; }
       `}</style>
 
-      <div className="sv-root">
-        <div className="sv-left">
-          <div className="grid-bg" />
-          <div style={{ position: 'relative', zIndex: 1, padding: '48px 52px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <svg width="34" height="34" viewBox="0 0 36 36" fill="none">
-                <rect x="2" y="2" width="32" height="32" rx="4" stroke={GOLD} strokeWidth="1.5"/>
-                <path d="M10 18h16M10 12h10M10 24h12" stroke={GOLD} strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 600, color: GOLD, letterSpacing: 2 }}>SignVault</span>
-            </div>
-            <div style={{ marginTop: 'auto', marginBottom: 48 }}>
-              <p style={{ fontSize: 11, color: GOLD, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 20, opacity: 0.75 }}>Start for free today</p>
-              <h2 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 44, fontWeight: 600, color: '#f0ece4', lineHeight: 1.2, marginBottom: 20 }}>
-                Your documents,<br/><em style={{ color: GOLD }}>sealed with trust</em>
-              </h2>
-              <p style={{ fontSize: 13, color: '#6b6460', lineHeight: 1.8 }}>Join thousands of professionals who use SignVault to manage legally binding documents.</p>
-            </div>
-            <div style={{ marginBottom: 64 }}>
-              {[
-                { icon: '⚡', title: 'Set up in 2 minutes', desc: 'Upload and send for signing immediately' },
-                { icon: '🔒', title: 'Bank-grade security', desc: '256-bit encryption on every document' },
-                { icon: '📋', title: 'Complete audit trail', desc: 'IP, timestamp, and signer on every action' },
-              ].map(f => (
-                <div key={f.title} style={{ display: 'flex', gap: 16, marginBottom: 20 }}>
-                  <span style={{ fontSize: 20 }}>{f.icon}</span>
-                  <div>
-                    <div style={{ fontSize: 13, color: '#d4cfc7', marginBottom: 4 }}>{f.title}</div>
-                    <div style={{ fontSize: 11, color: '#5a5450', lineHeight: 1.6 }}>{f.desc}</div>
-                  </div>
+      <div style={{ fontFamily: "'Space Grotesk', sans-serif", minHeight: '100vh', display: 'flex', background: '#0C0C14' }}>
+
+        {/* LEFT PANEL */}
+        <div className="hidden lg:flex" style={{ width: '50%', flexDirection: 'column', justifyContent: 'space-between', padding: 64, background: '#111120', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 60% at 30% 50%, rgba(59,130,246,0.12) 0%, transparent 70%)' }} />
+          <div style={{ position: 'absolute', top: '50%', right: -40, width: 320, height: 320, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.08)', transform: 'translateY(-50%)' }} />
+          <div style={{ position: 'absolute', top: '50%', right: 20, width: 220, height: 220, borderRadius: '50%', border: '1px solid rgba(59,130,246,0.06)', transform: 'translateY(-50%)' }} />
+
+          {/* Logo */}
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60A5FA', boxShadow: '0 0 10px #60A5FA' }} />
+            <span className="font-playfair" style={{ fontSize: 18, fontWeight: 700, color: 'white', letterSpacing: 3, textTransform: 'uppercase' }}>SignVault</span>
+          </div>
+
+          {/* Center */}
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div style={{ width: 48, height: 4, background: '#2563EB', marginBottom: 32 }} />
+            <h2 className="font-playfair" style={{ fontSize: 'clamp(36px, 4vw, 52px)', fontWeight: 900, color: 'white', lineHeight: 1.0, marginBottom: 20 }}>
+              Start signing<br />
+              <em style={{ color: '#60A5FA' }}>today.</em>
+            </h2>
+            <p style={{ fontSize: 14, color: '#64748B', lineHeight: 1.8, maxWidth: 280, marginBottom: 40 }}>
+              Join professionals who trust SignVault for secure, legally-binding document signing.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {['Drag & drop signature placement', 'Multiple signers support', 'Full audit trail & compliance', 'Custom company stamp'].map((f, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#60A5FA', flexShrink: 0 }}>✓</div>
+                  <span style={{ fontSize: 13, color: '#64748B' }}>{f}</span>
                 </div>
               ))}
             </div>
           </div>
+
+          {/* Bottom */}
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <p style={{ fontSize: 11, color: '#64748B', letterSpacing: 3, textTransform: 'uppercase' }}>Free to get started</p>
+          </div>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: PARCHMENT, padding: '48px 32px' }}>
-          <div className="slide-up" style={{ width: '100%', maxWidth: 400 }}>
-            <div style={{ marginBottom: 32 }}>
-              <h1 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 44, fontWeight: 600, color: '#1a1714', letterSpacing: -1, marginBottom: 8 }}>Create account</h1>
-              <p style={{ fontSize: 12, color: '#9a9088' }}>Free forever for individuals</p>
+        {/* RIGHT PANEL */}
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 24px', position: 'relative', overflowY: 'auto' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 60% 60% at 50% 50%, rgba(37,99,235,0.05) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+          <div style={{ width: '100%', maxWidth: 380, position: 'relative' }}>
+            {/* Mobile logo */}
+            <div className="lg:hidden" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#60A5FA' }} />
+              <span className="font-playfair" style={{ fontSize: 16, fontWeight: 700, color: 'white', letterSpacing: 3, textTransform: 'uppercase' }}>SignVault</span>
             </div>
 
-            {serverError && (
-              <div style={{ background: 'rgba(220,53,69,0.08)', border: '1px solid rgba(220,53,69,0.2)', borderRadius: 6, padding: '12px 16px', fontSize: 12, color: '#c0392b', marginBottom: 24 }}>
-                ⚠ {serverError}
-              </div>
-            )}
+            <div className="fade-up">
+              <h1 className="font-playfair" style={{ fontSize: 40, fontWeight: 900, color: 'white', marginBottom: 8 }}>Create Account</h1>
+              <p style={{ fontSize: 14, color: '#475569', marginBottom: 36 }}>
+                Already have an account?{' '}
+                <Link to="/login" style={{ color: '#3B82F6', textDecoration: 'none', fontWeight: 500 }}>Sign in →</Link>
+              </p>
+            </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: 24 }} noValidate>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: '#6b6460' }}>Full name</label>
-                <input {...register('name')} type="text" placeholder="Alice Johnson" className={`sv-input ${errors.name ? 'err' : ''}`} />
-                {errors.name && <span style={{ fontSize: 11, color: '#e53e3e' }}>{errors.name.message}</span>}
+            <form onSubmit={handleSubmit(onSubmit)} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
+              {/* Name */}
+              <div className="fade-up-1">
+                <label style={{ display: 'block', fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 8 }}>Full Name</label>
+                <input
+                  {...register('name')}
+                  type="text"
+                  placeholder="Your full name"
+                  className="input-field"
+                  style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4, color: 'white', fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", boxSizing: 'border-box' }}
+                />
+                {errors.name && <p style={{ fontSize: 12, color: '#F87171', marginTop: 6 }}>⚠ {errors.name.message}</p>}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <label style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: '#6b6460' }}>Email address</label>
-                <input {...register('email')} type="email" placeholder="you@company.com" className={`sv-input ${errors.email ? 'err' : ''}`} />
-                {errors.email && <span style={{ fontSize: 11, color: '#e53e3e' }}>{errors.email.message}</span>}
+              {/* Email */}
+              <div className="fade-up-2">
+                <label style={{ display: 'block', fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 8 }}>Email Address</label>
+                <input
+                  {...register('email')}
+                  type="email"
+                  placeholder="you@company.com"
+                  className="input-field"
+                  style={{ width: '100%', padding: '12px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4, color: 'white', fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", boxSizing: 'border-box' }}
+                />
+                {errors.email && <p style={{ fontSize: 12, color: '#F87171', marginTop: 6 }}>⚠ {errors.email.message}</p>}
               </div>
 
-              <div className="two-col">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <label style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: '#6b6460' }}>Password</label>
-                  <input {...register('password')} type="password" placeholder="Min 8 chars" className={`sv-input ${errors.password ? 'err' : ''}`} />
-                  {errors.password && <span style={{ fontSize: 11, color: '#e53e3e' }}>{errors.password.message}</span>}
+              {/* Password */}
+              <div className="fade-up-3">
+                <label style={{ display: 'block', fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 8 }}>Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    {...register('password')}
+                    type={showPass ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    className="input-field"
+                    style={{ width: '100%', padding: '12px 44px 12px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4, color: 'white', fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", boxSizing: 'border-box' }}
+                  />
+                  <button type="button" onClick={() => setShowPass(!showPass)}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#475569' }}>
+                    {showPass ? '🙈' : '👁️'}
+                  </button>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <label style={{ fontSize: 11, letterSpacing: 2, textTransform: 'uppercase', color: '#6b6460' }}>Confirm</label>
-                  <input {...register('confirmPassword')} type="password" placeholder="Repeat" className={`sv-input ${errors.confirmPassword ? 'err' : ''}`} />
-                  {errors.confirmPassword && <span style={{ fontSize: 11, color: '#e53e3e' }}>{errors.confirmPassword.message}</span>}
-                </div>
+                {errors.password && <p style={{ fontSize: 12, color: '#F87171', marginTop: 6 }}>⚠ {errors.password.message}</p>}
               </div>
 
-              <button type="submit" disabled={loading} className="sv-btn" style={{ marginTop: 8 }}>
-                {loading ? <><span className="spinner" /> Creating account...</> : 'Create Account →'}
-              </button>
+              {/* Confirm Password */}
+              <div className="fade-up-4">
+                <label style={{ display: 'block', fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 8 }}>Confirm Password</label>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    {...register('confirmPassword')}
+                    type={showConfirm ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    className="input-field"
+                    style={{ width: '100%', padding: '12px 44px 12px 16px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 4, color: 'white', fontSize: 14, fontFamily: "'Space Grotesk', sans-serif", boxSizing: 'border-box' }}
+                  />
+                  <button type="button" onClick={() => setShowConfirm(!showConfirm)}
+                    style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: '#475569' }}>
+                    {showConfirm ? '🙈' : '👁️'}
+                  </button>
+                </div>
+                {errors.confirmPassword && <p style={{ fontSize: 12, color: '#F87171', marginTop: 6 }}>⚠ {errors.confirmPassword.message}</p>}
+              </div>
+
+              {/* Submit */}
+              <div className="fade-up-5" style={{ marginTop: 4 }}>
+                <button type="submit" disabled={isSubmitting} className="btn-main"
+                  style={{ width: '100%', padding: '14px', background: '#2563EB', border: 'none', color: 'white', fontSize: 14, fontWeight: 600, letterSpacing: 1, cursor: isSubmitting ? 'not-allowed' : 'pointer', opacity: isSubmitting ? 0.7 : 1, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  {isSubmitting ? 'Creating account...' : 'Create Account →'}
+                </button>
+              </div>
             </form>
 
-            <p style={{ textAlign: 'center', fontSize: 12, color: '#9a9088', marginTop: 24 }}>
-              Already have an account? <Link to="/login" className="sv-link" style={{ fontWeight: 500 }}>Sign in</Link>
+            <p style={{ textAlign: 'center', fontSize: 12, color: '#64748B', marginTop: 28 }}>
+              🔒 Protected by 256-bit SSL encryption
             </p>
           </div>
         </div>

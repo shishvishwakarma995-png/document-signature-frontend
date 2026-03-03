@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -86,45 +86,38 @@ async function generateSignedPdfBlob(docUrl: string, signerName: string, fontFam
   return pdfDoc.save();
 }
 
-export default function SignPage() {
-  const { token } = useParams();
+export default function SelfSign() {
+  const { id } = useParams();
+  const navigate = useNavigate();
   const [doc, setDoc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [step, setStep] = useState<'review' | 'sign' | 'preview' | 'done' | 'rejected'>('review');
+  const [numPages, setNumPages] = useState(0);
+  const [previewNumPages, setPreviewNumPages] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [previewPage, setPreviewPage] = useState(1);
+  const [step, setStep] = useState<'review' | 'sign' | 'preview' | 'done'>('review');
   const [signerName, setSignerName] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('style1');
   const [processing, setProcessing] = useState(false);
-  const [numPages, setNumPages] = useState(0);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [previewPage, setPreviewPage] = useState(1);
-  const [previewNumPages, setPreviewNumPages] = useState(0);
-  const [rejectReason, setRejectReason] = useState('');
-  const [showReject, setShowReject] = useState(false);
+  const [error, setError] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState('');
   const [signedPdfBytes, setSignedPdfBytes] = useState<Uint8Array | null>(null);
-  const [stampBase64, setStampBase64] = useState<string | undefined>(undefined);
-
-  const pdfWidth = window.innerWidth < 600 ? window.innerWidth - 48 : 620;
 
   useEffect(() => {
-    api.get(`/api/signers/sign/${token}`)
-      .then(res => {
-        setDoc(res.data.document);
-        setSignerName(res.data.signer?.name || '');
-        if (res.data.document?.stamp_data) setStampBase64(res.data.document.stamp_data);
-        setLoading(false);
-      })
-      .catch(() => { setError('Invalid or expired signing link.'); setLoading(false); });
-  }, [token]);
+    api.get('/api/docs/' + id).then(res => {
+      setDoc(res.data.document); setLoading(false);
+    }).catch(() => { setError('Document not found.'); setLoading(false); });
+  }, [id]);
 
   const handlePreview = async () => {
     if (!signerName.trim()) { setError('Please enter your name!'); return; }
     setProcessing(true); setError('');
     const currentStyle = SIGNATURE_STYLES.find(s => s.id === selectedStyle);
     try {
-      const res = await api.get(`/api/signatures/${doc.id}`);
-      const fields = (res.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
+      const sigRes = await api.get('/api/signatures/' + id);
+      const fields = (sigRes.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
+      let stampBase64 = localStorage.getItem(`stamp_${id}`) || undefined;
+      if (!stampBase64 && doc?.stamp_data) stampBase64 = doc.stamp_data;
       const pdfBytes = await generateSignedPdfBlob(doc.file_url, signerName, currentStyle?.font || 'cursive', fields, stampBase64);
       setSignedPdfBytes(pdfBytes);
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -143,23 +136,14 @@ export default function SignPage() {
       const a = document.createElement('a');
       a.href = url; a.download = 'signed_' + doc.original_name; a.click();
       URL.revokeObjectURL(url);
-      await api.post(`/api/signers/sign/${token}`, { name: signerName });
+      await api.post('/api/signatures', { documentId: id, fields: [{ x: 0, y: 0, page: 1, width: 200, height: 70, type: 'done' }] });
       setStep('done');
-    } catch { setError('Failed to complete signing.'); }
-    finally { setProcessing(false); }
-  };
-
-  const handleReject = async () => {
-    if (!rejectReason.trim()) { setError('Please provide a reason.'); return; }
-    setProcessing(true);
-    try {
-      await api.post(`/api/signers/reject/${token}`, { reason: rejectReason });
-      setStep('rejected');
-    } catch { setError('Failed to reject.'); }
+    } catch { setError('Download failed.'); }
     finally { setProcessing(false); }
   };
 
   const currentStyle = SIGNATURE_STYLES.find(s => s.id === selectedStyle);
+  const pdfW = window.innerWidth < 600 ? window.innerWidth - 80 : 660;
 
   if (loading) return (
     <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -171,33 +155,16 @@ export default function SignPage() {
     </div>
   );
 
-  if (error && !doc) return (
-    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", padding: 24 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontSize: 64, marginBottom: 24 }}>⚠️</div>
-        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 32, color: 'white', marginBottom: 12 }}>Invalid Link</h2>
-        <p style={{ fontSize: 14, color: '#64748B' }}>{error}</p>
-      </div>
-    </div>
-  );
-
   if (step === 'done') return (
-    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", padding: 24 }}>
+    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif" }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>✅</div>
         <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Signed!</h2>
-        <p style={{ fontSize: 14, color: '#64748B', marginBottom: 8 }}>Your signed PDF has been downloaded.</p>
-        <p style={{ fontSize: 12, color: '#64748B' }}>You can close this tab.</p>
-      </div>
-    </div>
-  );
-
-  if (step === 'rejected') return (
-    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", padding: 24 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>❌</div>
-        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Rejected</h2>
-        <p style={{ fontSize: 14, color: '#64748B' }}>The sender has been notified.</p>
+        <p style={{ fontSize: 14, color: '#64748B', marginBottom: 32 }}>Your signed PDF has been downloaded successfully.</p>
+        <button onClick={() => navigate('/dashboard')}
+          style={{ background: '#2563EB', color: 'white', border: 'none', padding: '14px 36px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: 'pointer', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)' }}>
+          Back to Dashboard →
+        </button>
       </div>
     </div>
   );
@@ -205,14 +172,14 @@ export default function SignPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Space+Grotesk:wght@300;400;500;600&family=Dancing+Script:wght@600&family=Pacifico&family=Satisfy&family=Great+Vibes&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600&family=Dancing+Script:wght@600&family=Pacifico&family=Satisfy&family=Great+Vibes&display=swap');
         .font-playfair { font-family: 'Playfair Display', serif; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
         .fade-in { animation: fadeUp 0.5s ease both; }
         .style-card { transition: all 0.2s; cursor: pointer; }
-        .style-card:hover { border-color: rgba(59,130,246,0.3) !important; }
+        .style-card:hover { border-color: rgba(59,130,246,0.4) !important; }
         .name-input:focus { outline: none; border-bottom-color: #3B82F6 !important; }
-        .reject-textarea:focus { outline: none; border-color: rgba(239,68,68,0.4) !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.1); }
         .btn-back { transition: all 0.2s; }
         .btn-back:hover { border-color: rgba(59,130,246,0.3) !important; color: #60A5FA !important; }
       `}</style>
@@ -220,28 +187,37 @@ export default function SignPage() {
       <div style={{ minHeight: '100vh', background: '#0C0C14', fontFamily: "'Space Grotesk', sans-serif", color: 'white' }}>
 
         {/* NAV */}
-        <nav style={{ background: 'rgba(5,15,36,0.95)', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '0 32px', height: 60, display: 'flex', alignItems: 'center', justifyContent: 'space-between', backdropFilter: 'blur(20px)' }}>
+        <nav style={{ background: 'rgba(5,15,36,0.95)', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '0 48px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(20px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60A5FA', boxShadow: '0 0 10px #60A5FA' }} />
             <span className="font-playfair" style={{ fontSize: 18, fontWeight: 700, color: 'white', letterSpacing: 3, textTransform: 'uppercase' }}>SignVault</span>
           </div>
-          <span style={{ fontSize: 11, color: '#64748B', letterSpacing: 2, textTransform: 'uppercase' }}>Signing Request</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => navigate(-1)} className="btn-back"
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8', padding: '8px 18px', fontSize: 11, cursor: 'pointer', borderRadius: 3, fontFamily: "'Space Grotesk', sans-serif" }}>
+              ← Back
+            </button>
+            <button onClick={() => navigate('/dashboard')} className="btn-back"
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#94A3B8', padding: '8px 18px', fontSize: 11, cursor: 'pointer', borderRadius: 3, fontFamily: "'Space Grotesk', sans-serif" }}>
+              ← Dashboard
+            </button>
+          </div>
         </nav>
 
-        <div style={{ maxWidth: 740, margin: '0 auto', padding: '40px 24px' }}>
+        <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 24px' }}>
 
-          {/* Steps */}
-          <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40, overflowX: 'auto', paddingBottom: 4 }}>
+          {/* Steps indicator */}
+          <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40 }}>
             {['Review', 'Sign', 'Preview'].map((s, i) => {
-              const isActive = (step==='review'&&i===0)||(step==='sign'&&i===1)||(step==='preview'&&i===2);
-              const isDone = (i===0&&(step==='sign'||step==='preview'))||(i===1&&step==='preview');
+              const isActive = (step === 'review' && i === 0) || (step === 'sign' && i === 1) || (step === 'preview' && i === 2);
+              const isDone = (i === 0 && (step === 'sign' || step === 'preview')) || (i === 1 && step === 'preview');
               return (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: isDone ? 'rgba(16,185,129,0.15)' : isActive ? '#2563EB' : 'rgba(255,255,255,0.04)', color: isDone ? '#34D399' : isActive ? 'white' : '#64748B', border: isDone ? '1px solid rgba(16,185,129,0.3)' : isActive ? '1px solid #2563EB' : '1px solid rgba(255,255,255,0.06)' }}>
-                    {isDone ? '✓' : i+1}
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, background: isDone ? 'rgba(16,185,129,0.2)' : isActive ? '#2563EB' : 'rgba(255,255,255,0.04)', color: isDone ? '#34D399' : isActive ? 'white' : '#64748B', border: isDone ? '1px solid rgba(16,185,129,0.3)' : isActive ? '1px solid #2563EB' : '1px solid rgba(255,255,255,0.06)' }}>
+                    {isDone ? '✓' : i + 1}
                   </div>
                   <span style={{ fontSize: 12, color: isActive ? '#60A5FA' : isDone ? '#34D399' : '#64748B' }}>{s}</span>
-                  {i < 2 && <span style={{ color: '#64748B', margin: '0 4px' }}>→</span>}
+                  {i < 2 && <span style={{ color: '#64748B', margin: '0 4px', fontSize: 14 }}>→</span>}
                 </div>
               );
             })}
@@ -261,72 +237,50 @@ export default function SignPage() {
                   <div style={{ width: 32, height: 1, background: '#2563EB' }} />
                   <span style={{ fontSize: 10, letterSpacing: 4, textTransform: 'uppercase', color: '#3B82F6' }}>Step 1</span>
                 </div>
-                <h1 className="font-playfair" style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 900, color: 'white', marginBottom: 6 }}>Review Document</h1>
-                <p style={{ fontSize: 13, color: '#64748B' }}>You have been requested to sign: <span style={{ color: '#94A3B8' }}>{doc?.original_name}</span></p>
+                <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Review Document</h1>
+                <p style={{ fontSize: 13, color: '#64748B' }}>Review the document before signing.</p>
               </div>
 
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, marginBottom: 24, overflowX: 'auto' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 24, marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'center', background: '#f8f8f8', borderRadius: 4, padding: 16 }}>
                   <Document file={doc?.file_url} onLoadSuccess={({ numPages }) => setNumPages(numPages)} loading={<p style={{ padding: 40, color: '#64748B', fontSize: 13 }}>Loading PDF...</p>}>
-                    <Page pageNumber={currentPage} width={pdfWidth} renderTextLayer={false} renderAnnotationLayer={false} />
+                    <Page pageNumber={currentPage} width={pdfW} renderTextLayer={false} renderAnnotationLayer={false} />
                   </Document>
                 </div>
                 {numPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                    {Array.from({ length: numPages }, (_, i) => i+1).map(p => (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
+                    {Array.from({ length: numPages }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => setCurrentPage(p)}
-                        style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${currentPage===p ? '#2563EB' : 'rgba(255,255,255,0.08)'}`, background: currentPage===p ? '#2563EB' : 'transparent', color: currentPage===p ? 'white' : '#475569', cursor: 'pointer', fontSize: 12, fontFamily: "'Space Grotesk', sans-serif" }}>{p}</button>
+                        style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${currentPage === p ? '#2563EB' : 'rgba(255,255,255,0.08)'}`, background: currentPage === p ? '#2563EB' : 'transparent', color: currentPage === p ? 'white' : '#475569', cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12 }}>{p}</button>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                  <button onClick={() => setShowReject(!showReject)}
-                    style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', padding: '12px 24px', fontSize: 12, cursor: 'pointer', borderRadius: 3, fontFamily: "'Space Grotesk', sans-serif" }}>
-                    Decline to Sign
-                  </button>
-                  <button onClick={async () => {
-                    try {
-                      const sigRes = await api.get(`/api/signatures/${doc.id}`);
-                      const fields = (sigRes.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
-                      const hasSignatureOrDate = fields.some((f: any) => f.type === 'signature' || f.type === 'date' || !f.type);
-                      
-                      if (!hasSignatureOrDate && fields.length > 0) {
-                        // Only stamp  — sign step skip, direct preview
-                        setProcessing(true);
-                        const pdfBytes = await generateSignedPdfBlob(doc.file_url, 'Stamp', 'Arial', fields, stampBase64);
-                        setSignedPdfBytes(pdfBytes);
-                        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-                        setPreviewBlobUrl(URL.createObjectURL(blob));
-                        setProcessing(false);
-                        setStep('preview');
-                      } else {
-                        setStep('sign');
-                      }
-                    } catch {
-                      setStep('sign');
-                    }
-                  }}
-                    style={{ background: processing ? 'rgba(37,99,235,0.7)' : '#2563EB', color: '#ffffff', border: 'none', padding: '12px 36px', fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: processing ? 'not-allowed' : 'pointer', fontFamily: "'Space Grotesk', sans-serif" }}>
-                    {processing ? 'Loading...' : 'Proceed to Sign →'}
-                  </button>
-                </div>
-
-                {showReject && (
-                  <div style={{ background: 'rgba(239,68,68,0.04)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 6, padding: 20, marginTop: 8 }}>
-                    <p style={{ fontSize: 13, color: '#F87171', fontWeight: 500, marginBottom: 12 }}>Reason for declining:</p>
-                    <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} rows={3}
-                      placeholder="Please explain why you are declining..."
-                      className="reject-textarea"
-                      style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 4, padding: '10px 14px', fontSize: 13, color: 'white', fontFamily: "'Space Grotesk', sans-serif", resize: 'none', marginBottom: 12, boxSizing: 'border-box' }} />
-                    <button onClick={handleReject} disabled={processing}
-                      style={{ background: 'rgba(239,68,68,0.15)', color: '#F87171', border: '1px solid rgba(239,68,68,0.3)', padding: '10px 24px', fontSize: 12, fontWeight: 600, cursor: processing ? 'not-allowed' : 'pointer', borderRadius: 3, opacity: processing ? 0.7 : 1, fontFamily: "'Space Grotesk', sans-serif" }}>
-                      {processing ? 'Submitting...' : 'Confirm Decline'}
-                    </button>
-                  </div>
-                )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={async () => {
+                  // Check if there are signature fields — if not, skip sign step and directly generate signed PDF with stamp (if any) and show preview
+                  const sigRes = await api.get('/api/signatures/' + id);
+                  const fields = (sigRes.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
+                  const hasSignatureField = fields.some((f: any) => f.type === 'signature' || f.type === 'date' || !f.type);
+                  if (!hasSignatureField && fields.length > 0) {
+                    // Only stamp  — direct preview
+                    setProcessing(true);
+                    let stampBase64 = localStorage.getItem(`stamp_${id}`) || undefined;
+                    if (!stampBase64 && doc?.stamp_data) stampBase64 = doc.stamp_data;
+                    const pdfBytes = await generateSignedPdfBlob(doc.file_url, 'Stamp', 'Arial', fields, stampBase64);
+                    setSignedPdfBytes(pdfBytes);
+                    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    setPreviewBlobUrl(URL.createObjectURL(blob));
+                    setProcessing(false);
+                    setStep('preview');
+                  } else {
+                    setStep('sign');
+                  }
+                }}
+                  style={{ background: '#2563EB', color: 'white', border: 'none', padding: '14px 40px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: 'pointer', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)' }}>
+                  Proceed to Sign →
+                </button>
               </div>
             </div>
           )}
@@ -339,23 +293,25 @@ export default function SignPage() {
                   <div style={{ width: 32, height: 1, background: '#2563EB' }} />
                   <span style={{ fontSize: 10, letterSpacing: 4, textTransform: 'uppercase', color: '#3B82F6' }}>Step 2</span>
                 </div>
-                <h1 className="font-playfair" style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 900, color: 'white', marginBottom: 6 }}>Create Your Signature</h1>
+                <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Create Your Signature</h1>
                 <p style={{ fontSize: 13, color: '#64748B' }}>Type your name and choose a style.</p>
               </div>
 
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 24, marginBottom: 16 }}>
+              {/* Name input */}
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 28, marginBottom: 16 }}>
                 <label style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', display: 'block', marginBottom: 12 }}>Your Full Name</label>
                 <input type="text" value={signerName} onChange={e => setSignerName(e.target.value)} placeholder="Type your full name..."
                   className="name-input"
                   style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '10px 0', fontSize: 20, fontFamily: "'Space Grotesk', sans-serif", color: 'white', outline: 'none', boxSizing: 'border-box' }} />
               </div>
 
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 24, marginBottom: 16 }}>
+              {/* Style selection */}
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 28, marginBottom: 16 }}>
                 <label style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', display: 'block', marginBottom: 16 }}>Choose Style</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {SIGNATURE_STYLES.map(style => (
                     <div key={style.id} onClick={() => setSelectedStyle(style.id)} className="style-card"
-                      style={{ border: `1px solid ${selectedStyle===style.id ? '#3B82F6' : 'rgba(255,255,255,0.06)'}`, borderRadius: 6, padding: '16px 20px', background: selectedStyle===style.id ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
+                      style={{ border: `1px solid ${selectedStyle === style.id ? '#3B82F6' : 'rgba(255,255,255,0.06)'}`, borderRadius: 6, padding: '16px 20px', background: selectedStyle === style.id ? 'rgba(59,130,246,0.06)' : 'transparent' }}>
                       <p style={{ fontSize: 10, color: '#475569', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 }}>{style.label}</p>
                       <p style={{ fontFamily: style.font, fontSize: 28, color: 'white', margin: 0 }}>{signerName || 'Your Name'}</p>
                     </div>
@@ -363,20 +319,21 @@ export default function SignPage() {
                 </div>
               </div>
 
+              {/* Preview */}
               {signerName && (
                 <div style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 6, padding: 24, marginBottom: 20, textAlign: 'center' }}>
-                  <p style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#3B82F6', marginBottom: 12 }}>Preview</p>
+                  <p style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#3B82F6', marginBottom: 12 }}>Signature Preview</p>
                   <p style={{ fontFamily: currentStyle?.font, fontSize: 40, color: 'white', margin: 0 }}>{signerName}</p>
                 </div>
               )}
 
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                 <button onClick={() => setStep('review')} className="btn-back"
-                  style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 24px', fontSize: 12, cursor: 'pointer', borderRadius: 3, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 24px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, cursor: 'pointer', borderRadius: 3 }}>
                   ← Back
                 </button>
                 <button onClick={handlePreview} disabled={processing || !signerName.trim()}
-                  style={{ background: signerName.trim() ? '#2563EB' : 'rgba(255,255,255,0.04)', color: signerName.trim() ? 'white' : '#64748B', border: 'none', padding: '12px 36px', fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: signerName.trim() ? 'pointer' : 'not-allowed', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)', opacity: processing ? 0.7 : 1, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  style={{ background: signerName.trim() ? '#2563EB' : 'rgba(255,255,255,0.04)', color: signerName.trim() ? 'white' : '#64748B', border: 'none', padding: '12px 36px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: signerName.trim() ? 'pointer' : 'not-allowed', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)', opacity: processing ? 0.7 : 1 }}>
                   {processing ? 'Generating...' : 'Preview Signed PDF →'}
                 </button>
               </div>
@@ -391,33 +348,39 @@ export default function SignPage() {
                   <div style={{ width: 32, height: 1, background: '#2563EB' }} />
                   <span style={{ fontSize: 10, letterSpacing: 4, textTransform: 'uppercase', color: '#3B82F6' }}>Step 3</span>
                 </div>
-                <h1 className="font-playfair" style={{ fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 900, color: 'white', marginBottom: 6 }}>Preview Signed Document</h1>
+                <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Preview Signed Document</h1>
                 <p style={{ fontSize: 13, color: '#64748B' }}>Looks good? Download it — or go back to edit.</p>
               </div>
 
-              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 20, marginBottom: 24, overflowX: 'auto' }}>
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 24, marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'center', background: '#f8f8f8', borderRadius: 4, padding: 16 }}>
                   <Document file={previewBlobUrl} onLoadSuccess={({ numPages }) => setPreviewNumPages(numPages)} loading={<p style={{ padding: 40, color: '#64748B' }}>Loading preview...</p>}>
-                    <Page pageNumber={previewPage} width={pdfWidth} renderTextLayer={false} renderAnnotationLayer={false} />
+                    <Page pageNumber={previewPage} width={pdfW} renderTextLayer={false} renderAnnotationLayer={false} />
                   </Document>
                 </div>
                 {previewNumPages > 1 && (
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-                    {Array.from({ length: previewNumPages }, (_, i) => i+1).map(p => (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
+                    {Array.from({ length: previewNumPages }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => setPreviewPage(p)}
-                        style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${previewPage===p ? '#2563EB' : 'rgba(255,255,255,0.08)'}`, background: previewPage===p ? '#2563EB' : 'transparent', color: previewPage===p ? 'white' : '#475569', cursor: 'pointer', fontSize: 12, fontFamily: "'Space Grotesk', sans-serif" }}>{p}</button>
+                        style={{ width: 32, height: 32, borderRadius: '50%', border: `1px solid ${previewPage === p ? '#2563EB' : 'rgba(255,255,255,0.08)'}`, background: previewPage === p ? '#2563EB' : 'transparent', color: previewPage === p ? 'white' : '#475569', cursor: 'pointer', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12 }}>{p}</button>
                     ))}
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-                <button onClick={() => { setStep('sign'); setPreviewBlobUrl(''); }} className="btn-back"
-                  style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 20px', fontSize: 12, cursor: 'pointer', borderRadius: 3, fontFamily: "'Space Grotesk', sans-serif" }}>
-                  ← Edit Signature
-                </button>
+              <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => { setStep('sign'); setPreviewBlobUrl(''); }} className="btn-back"
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 20px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, cursor: 'pointer', borderRadius: 3 }}>
+                    ← Edit Signature
+                  </button>
+                  <button onClick={() => navigate(`/editor/${id}`)} className="btn-back"
+                    style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 20px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, cursor: 'pointer', borderRadius: 3 }}>
+                    ✏️ Edit Fields
+                  </button>
+                </div>
                 <button onClick={handleDownload} disabled={processing}
-                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.3)', padding: '14px 36px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 3, opacity: processing ? 0.7 : 1, fontFamily: "'Space Grotesk', sans-serif" }}>
+                  style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.3)', padding: '14px 36px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 3, opacity: processing ? 0.7 : 1 }}>
                   {processing ? 'Downloading...' : '✓ Looks Good — Download!'}
                 </button>
               </div>
