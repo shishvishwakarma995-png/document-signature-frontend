@@ -12,6 +12,50 @@ interface Doc {
   file_url: string;
 }
 
+function SkeletonCard() {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="skeleton" style={{ width: 44, height: 44, borderRadius: 4 }} />
+        <div style={{ flex: 1 }}>
+          <div className="skeleton" style={{ width: '40%', height: 14, borderRadius: 4, marginBottom: 8 }} />
+          <div className="skeleton" style={{ width: '20%', height: 11, borderRadius: 4 }} />
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          {[1,2,3,4].map(i => (
+            <div key={i} className="skeleton" style={{ width: 60, height: 28, borderRadius: 3 }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyState({ filter }: { filter: string }) {
+  const isFiltered = filter !== 'all';
+  return (
+    <div style={{ textAlign: 'center', padding: '80px 24px', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 12, background: 'rgba(255,255,255,0.01)' }}>
+      <div style={{ fontSize: 64, marginBottom: 20, filter: 'grayscale(0.3)' }}>
+        {filter === 'signed' ? '✅' : filter === 'pending' ? '⏳' : filter === 'rejected' ? '❌' : '📂'}
+      </div>
+      <h3 style={{ fontFamily: 'Playfair Display, serif', fontSize: 28, color: 'white', marginBottom: 10, fontWeight: 700 }}>
+        {isFiltered ? `No ${filter} documents` : 'No documents yet'}
+      </h3>
+      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 32, maxWidth: 320, margin: '0 auto 32px' }}>
+        {isFiltered
+          ? `You don't have any ${filter} documents at the moment.`
+          : 'Upload your first PDF to get started with SignVault.'}
+      </p>
+      {!isFiltered && (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(37,99,235,0.1)', border: '1px solid rgba(37,99,235,0.2)', borderRadius: 6, padding: '12px 20px' }}>
+          <span style={{ fontSize: 18 }}>⬆️</span>
+          <span style={{ fontSize: 13, color: '#60A5FA' }}>Click the upload area above to add a PDF</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MultipleEmailInvite({ docId, onSuccess, onClose }: { docId: string; onSuccess: () => void; onClose: () => void }) {
   const [emails, setEmails] = useState("");
   const [sending, setSending] = useState(false);
@@ -33,9 +77,7 @@ function MultipleEmailInvite({ docId, onSuccess, onClose }: { docId: string; onS
 
   return (
     <>
-      <style>{`
-        .invite-textarea:focus { outline: none; border-color: #3B82F6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
-      `}</style>
+      <style>{`.invite-textarea:focus { outline: none; border-color: #3B82F6 !important; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }`}</style>
       <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <p style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 12 }}>Send for Signing</p>
         <textarea
@@ -70,7 +112,13 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [sharingDocId, setSharingDocId] = useState("");
   const [filter, setFilter] = useState("all");
+  const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setTimeout(() => setMounted(true), 50);
+    fetchDocuments();
+  }, []);
 
   const fetchDocuments = async () => {
     try {
@@ -82,8 +130,6 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
-  useEffect(() => { fetchDocuments(); }, []);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -133,18 +179,28 @@ export default function Dashboard() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=Space+Grotesk:wght@300;400;500;600&display=swap');
         .font-playfair { font-family: 'Playfair Display', serif; }
-        .doc-card { transition: all 0.2s; }
-        .doc-card:hover { border-color: rgba(59,130,246,0.25) !important; background: rgba(59,130,246,0.02) !important; }
+        .doc-card { transition: all 0.25s ease; }
+        .doc-card:hover { border-color: rgba(59,130,246,0.25) !important; background: rgba(59,130,246,0.02) !important; transform: translateY(-1px); }
         .action-btn { transition: all 0.2s; cursor: pointer; font-family: 'Space Grotesk', sans-serif; border-radius: 3px; font-size: 11px; font-weight: 500; padding: 7px 12px; border: none; }
-        .action-btn:hover { transform: translateY(-1px); }
+        .action-btn:hover { transform: translateY(-1px); opacity: 0.85; }
         .upload-zone { transition: all 0.3s; cursor: pointer; }
         .upload-zone:hover { border-color: rgba(59,130,246,0.5) !important; background: rgba(59,130,246,0.04) !important; }
         .filter-btn { transition: all 0.2s; cursor: pointer; font-family: 'Space Grotesk', sans-serif; font-size: 11px; border-radius: 3px; padding: 6px 16px; }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+        .filter-btn:hover { opacity: 0.8; }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
         .fade-in { animation: fadeUp 0.5s ease both; }
+        .page-enter { opacity: 0; transform: translateY(20px); }
+        .page-ready { opacity: 1; transform: translateY(0); transition: opacity 0.4s ease, transform 0.4s ease; }
+        .skeleton {
+          background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%);
+          background-size: 400px 100%;
+          animation: shimmer 1.4s infinite;
+        }
       `}</style>
 
-      <div style={{ fontFamily: "'Space Grotesk', sans-serif", minHeight: '100vh', background: '#0C0C14', color: 'white' }}>
+      <div className={mounted ? 'page-ready' : 'page-enter'}
+        style={{ fontFamily: "'Space Grotesk', sans-serif", minHeight: '100vh', background: '#0C0C14', color: 'white' }}>
 
         {/* NAV */}
         <nav style={{ background: 'rgba(5,15,36,0.95)', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '0 48px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(20px)' }}>
@@ -211,17 +267,11 @@ export default function Dashboard() {
 
           {/* Documents List */}
           {loading ? (
-            <div style={{ textAlign: 'center', padding: '64px 0' }}>
-              <div style={{ width: 40, height: 40, border: '2px solid rgba(59,130,246,0.2)', borderTopColor: '#3B82F6', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 1s linear infinite' }} />
-              <p style={{ fontSize: 13, color: '#64748B' }}>Loading documents...</p>
-              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
             </div>
           ) : filteredDocs.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '64px 0', border: '1px solid rgba(255,255,255,0.04)', borderRadius: 8 }}>
-              <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>📁</div>
-              <p className="font-playfair" style={{ fontSize: 24, color: '#64748B', marginBottom: 8 }}>No {filter !== "all" ? filter : ""} documents</p>
-              <p style={{ fontSize: 13, color: '#64748B' }}>Upload your first PDF to get started</p>
-            </div>
+            <EmptyState filter={filter} />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {filteredDocs.map((doc, idx) => {
@@ -230,8 +280,6 @@ export default function Dashboard() {
                   <div key={doc.id} className="doc-card fade-in"
                     style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: '20px 24px', animationDelay: `${idx * 0.05}s` }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-
-                      {/* Left — Doc info */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                         <div style={{ width: 44, height: 44, background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: '#60A5FA', flexShrink: 0 }}>PDF</div>
                         <div>
@@ -244,8 +292,6 @@ export default function Dashboard() {
                           </div>
                         </div>
                       </div>
-
-                      {/* Right — Actions */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <a href={doc.file_url} target="_blank" rel="noopener noreferrer"
                           className="action-btn"
@@ -278,7 +324,6 @@ export default function Dashboard() {
                         </button>
                       </div>
                     </div>
-
                     {sharingDocId === doc.id && (
                       <MultipleEmailInvite
                         docId={doc.id}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -6,6 +6,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import api from '../services/api';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import toast from 'react-hot-toast';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -15,6 +16,51 @@ const SIGNATURE_STYLES = [
   { id: 'style3', font: 'Satisfy, cursive', label: 'Classic' },
   { id: 'style4', font: 'Great Vibes, cursive', label: 'Formal' },
 ];
+
+function ConfettiEffect() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const pieces: any[] = [];
+    const colors = ['#3B82F6', '#34D399', '#FCD34D', '#F87171', '#A78BFA', '#60A5FA'];
+    for (let i = 0; i < 150; i++) {
+      pieces.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height - canvas.height,
+        w: Math.random() * 10 + 5,
+        h: Math.random() * 6 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        speed: Math.random() * 3 + 2,
+        rotSpeed: Math.random() * 4 - 2,
+      });
+    }
+    let frame: number;
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pieces.forEach(p => {
+        ctx.save();
+        ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+        p.y += p.speed;
+        p.rotation += p.rotSpeed;
+        if (p.y > canvas.height) p.y = -10;
+      });
+      frame = requestAnimationFrame(animate);
+    };
+    animate();
+    const timeout = setTimeout(() => cancelAnimationFrame(frame), 4000);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timeout); };
+  }, []);
+  return <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 }} />;
+}
 
 async function generateSignedPdfBlob(docUrl: string, signerName: string, fontFamily: string, signatureFields: any[], stampBase64?: string): Promise<Uint8Array> {
   const canvas = document.createElement('canvas');
@@ -102,6 +148,7 @@ export default function SelfSign() {
   const [error, setError] = useState('');
   const [previewBlobUrl, setPreviewBlobUrl] = useState('');
   const [signedPdfBytes, setSignedPdfBytes] = useState<Uint8Array | null>(null);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   useEffect(() => {
     api.get('/api/docs/' + id).then(res => {
@@ -110,7 +157,7 @@ export default function SelfSign() {
   }, [id]);
 
   const handlePreview = async () => {
-    if (!signerName.trim()) { setError('Please enter your name!'); return; }
+    if (!signerName.trim()) { toast.error('Please enter your name!'); return; }
     setProcessing(true); setError('');
     const currentStyle = SIGNATURE_STYLES.find(s => s.id === selectedStyle);
     try {
@@ -123,7 +170,8 @@ export default function SelfSign() {
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       setPreviewBlobUrl(URL.createObjectURL(blob));
       setStep('preview');
-    } catch (err) { console.error(err); setError('Failed to generate preview.'); }
+      toast.success('Preview ready!');
+    } catch (err) { console.error(err); toast.error('Failed to generate preview.'); }
     finally { setProcessing(false); }
   };
 
@@ -137,8 +185,10 @@ export default function SelfSign() {
       a.href = url; a.download = 'signed_' + doc.original_name; a.click();
       URL.revokeObjectURL(url);
       await api.post('/api/signatures', { documentId: id, fields: [{ x: 0, y: 0, page: 1, width: 200, height: 70, type: 'done' }] });
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 4000);
       setStep('done');
-    } catch { setError('Download failed.'); }
+    } catch { toast.error('Download failed.'); }
     finally { setProcessing(false); }
   };
 
@@ -156,17 +206,20 @@ export default function SelfSign() {
   );
 
   if (step === 'done') return (
-    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif" }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>✅</div>
-        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Signed!</h2>
-        <p style={{ fontSize: 14, color: '#64748B', marginBottom: 32 }}>Your signed PDF has been downloaded successfully.</p>
-        <button onClick={() => navigate('/dashboard')}
-          style={{ background: '#2563EB', color: 'white', border: 'none', padding: '14px 36px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: 'pointer', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)' }}>
-          Back to Dashboard →
-        </button>
+    <>
+      {showConfetti && <ConfettiEffect />}
+      <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>✅</div>
+          <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Signed!</h2>
+          <p style={{ fontSize: 14, color: '#64748B', marginBottom: 32 }}>Your signed PDF has been downloaded successfully.</p>
+          <button onClick={() => navigate('/dashboard')}
+            style={{ background: '#2563EB', color: 'white', border: 'none', padding: '14px 36px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, fontWeight: 600, letterSpacing: 1, cursor: 'pointer', clipPath: 'polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%)' }}>
+            Back to Dashboard →
+          </button>
+        </div>
       </div>
-    </div>
+    </>
   );
 
   return (
@@ -185,8 +238,6 @@ export default function SelfSign() {
       `}</style>
 
       <div style={{ minHeight: '100vh', background: '#0C0C14', fontFamily: "'Space Grotesk', sans-serif", color: 'white' }}>
-
-        {/* NAV */}
         <nav style={{ background: 'rgba(5,15,36,0.95)', borderBottom: '1px solid rgba(255,255,255,0.04)', padding: '0 48px', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(20px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#60A5FA', boxShadow: '0 0 10px #60A5FA' }} />
@@ -205,8 +256,6 @@ export default function SelfSign() {
         </nav>
 
         <div style={{ maxWidth: 800, margin: '0 auto', padding: '40px 24px' }}>
-
-          {/* Steps indicator */}
           <div className="fade-in" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 40 }}>
             {['Review', 'Sign', 'Preview'].map((s, i) => {
               const isActive = (step === 'review' && i === 0) || (step === 'sign' && i === 1) || (step === 'preview' && i === 2);
@@ -229,7 +278,6 @@ export default function SelfSign() {
             </div>
           )}
 
-          {/* STEP 1 — Review */}
           {step === 'review' && (
             <div className="fade-in">
               <div style={{ marginBottom: 24 }}>
@@ -240,7 +288,6 @@ export default function SelfSign() {
                 <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Review Document</h1>
                 <p style={{ fontSize: 13, color: '#64748B' }}>Review the document before signing.</p>
               </div>
-
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 24, marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'center', background: '#f8f8f8', borderRadius: 4, padding: 16 }}>
                   <Document file={doc?.file_url} onLoadSuccess={({ numPages }) => setNumPages(numPages)} loading={<p style={{ padding: 40, color: '#64748B', fontSize: 13 }}>Loading PDF...</p>}>
@@ -256,15 +303,12 @@ export default function SelfSign() {
                   </div>
                 )}
               </div>
-
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={async () => {
-                  // Check if there are signature fields — if not, skip sign step and directly generate signed PDF with stamp (if any) and show preview
                   const sigRes = await api.get('/api/signatures/' + id);
                   const fields = (sigRes.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
                   const hasSignatureField = fields.some((f: any) => f.type === 'signature' || f.type === 'date' || !f.type);
                   if (!hasSignatureField && fields.length > 0) {
-                    // Only stamp  — direct preview
                     setProcessing(true);
                     let stampBase64 = localStorage.getItem(`stamp_${id}`) || undefined;
                     if (!stampBase64 && doc?.stamp_data) stampBase64 = doc.stamp_data;
@@ -285,7 +329,6 @@ export default function SelfSign() {
             </div>
           )}
 
-          {/* STEP 2 — Sign */}
           {step === 'sign' && (
             <div className="fade-in">
               <div style={{ marginBottom: 28 }}>
@@ -296,16 +339,12 @@ export default function SelfSign() {
                 <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Create Your Signature</h1>
                 <p style={{ fontSize: 13, color: '#64748B' }}>Type your name and choose a style.</p>
               </div>
-
-              {/* Name input */}
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 28, marginBottom: 16 }}>
                 <label style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', display: 'block', marginBottom: 12 }}>Your Full Name</label>
                 <input type="text" value={signerName} onChange={e => setSignerName(e.target.value)} placeholder="Type your full name..."
                   className="name-input"
                   style={{ width: '100%', background: 'transparent', border: 'none', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '10px 0', fontSize: 20, fontFamily: "'Space Grotesk', sans-serif", color: 'white', outline: 'none', boxSizing: 'border-box' }} />
               </div>
-
-              {/* Style selection */}
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 6, padding: 28, marginBottom: 16 }}>
                 <label style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', display: 'block', marginBottom: 16 }}>Choose Style</label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -318,15 +357,12 @@ export default function SelfSign() {
                   ))}
                 </div>
               </div>
-
-              {/* Preview */}
               {signerName && (
                 <div style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 6, padding: 24, marginBottom: 20, textAlign: 'center' }}>
                   <p style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#3B82F6', marginBottom: 12 }}>Signature Preview</p>
                   <p style={{ fontFamily: currentStyle?.font, fontSize: 40, color: 'white', margin: 0 }}>{signerName}</p>
                 </div>
               )}
-
               <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                 <button onClick={() => setStep('review')} className="btn-back"
                   style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: '#475569', padding: '12px 24px', fontFamily: "'Space Grotesk', sans-serif", fontSize: 12, cursor: 'pointer', borderRadius: 3 }}>
@@ -340,7 +376,6 @@ export default function SelfSign() {
             </div>
           )}
 
-          {/* STEP 3 — Preview */}
           {step === 'preview' && (
             <div className="fade-in">
               <div style={{ marginBottom: 24 }}>
@@ -351,7 +386,6 @@ export default function SelfSign() {
                 <h1 className="font-playfair" style={{ fontSize: 32, fontWeight: 900, color: 'white', marginBottom: 6 }}>Preview Signed Document</h1>
                 <p style={{ fontSize: 13, color: '#64748B' }}>Looks good? Download it — or go back to edit.</p>
               </div>
-
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, padding: 24, marginBottom: 24 }}>
                 <div style={{ display: 'flex', justifyContent: 'center', background: '#f8f8f8', borderRadius: 4, padding: 16 }}>
                   <Document file={previewBlobUrl} onLoadSuccess={({ numPages }) => setPreviewNumPages(numPages)} loading={<p style={{ padding: 40, color: '#64748B' }}>Loading preview...</p>}>
@@ -367,7 +401,6 @@ export default function SelfSign() {
                   </div>
                 )}
               </div>
-
               <div style={{ display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button onClick={() => { setStep('sign'); setPreviewBlobUrl(''); }} className="btn-back"
