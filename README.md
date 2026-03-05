@@ -1,73 +1,110 @@
-# React + TypeScript + Vite
+# SignVault — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> Enterprise Document Signature SaaS built with React + TypeScript
 
-Currently, two official plugins are available:
+**Live Demo:** https://document-signature-frontend-cf8g.vercel.app
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + Vite + TypeScript
+- Tailwind CSS
+- dnd-kit (drag & drop)
+- react-pdf
+- pdf-lib
+- Axios
+- React Hook Form + Zod
+- JWT (access + refresh tokens)
 
-## Expanding the ESLint configuration
+---
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Features
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- JWT Authentication (login/register) with refresh tokens
+- PDF Upload & Preview
+- Drag-and-drop signature field placement
+- 4 signature font styles
+- Company stamp upload
+- Self-sign flow with preview
+- Multi-signer email invites
+- Tokenized signing links for external signers
+- Real-time signing status dashboard
+- Audit trail timeline
+- Dark navy UI
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+---
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Getting Started
+
+### Prerequisites
+- Node.js 18+
+- npm
+
+### Installation
+
+```bash
+git clone https://github.com/shishvishwakarma995-png/document-signature-frontend.git
+cd document-signature-frontend
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### Environment Variables
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Create a `.env` file in the root:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```env
+VITE_API_URL=http://localhost:5000
 ```
+
+For production, set `VITE_API_URL` to your Render backend URL.
+
+### Run Development Server
+
+```bash
+npm run dev
+```
+
+App runs at `http://localhost:5173`
+
+### Build for Production
+
+```bash
+npm run build
+```
+
+---
+
+## Project Structure
+
+```
+src/
+├── hooks/
+│   ├── useAuth.ts        # Auth context + JWT refresh
+│   └── useTheme.ts
+├── pages/
+│   ├── Landing.tsx       # Landing page
+│   ├── Login.tsx         # Login
+│   ├── Register.tsx      # Register
+│   ├── Dashboard.tsx     # Document management
+│   ├── SignatureEditor.tsx # Drag-drop field editor
+│   ├── SelfSign.tsx      # Self-signing flow
+│   ├── SignPage.tsx      # External signer page
+│   ├── SignersStatus.tsx  # Signing status tracker
+│   └── AuditTrail.tsx    # Audit logs
+├── services/
+│   └── api.ts            # Axios + JWT refresh interceptor
+└── App.tsx
+```
+
+---
+
+## Deployment
+
+Deployed on **Vercel** with automatic GitHub integration.
+
+---
+
+## Backend
+
+See: https://github.com/shishvishwakarma995-png/document-signature-backend
