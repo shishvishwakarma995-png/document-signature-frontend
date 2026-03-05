@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -6,6 +6,7 @@ import 'react-pdf/dist/Page/TextLayer.css';
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import api from '../services/api';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import toast from 'react-hot-toast';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -15,6 +16,60 @@ const SIGNATURE_STYLES = [
   { id: 'style3', font: 'Satisfy, cursive', label: 'Classic' },
   { id: 'style4', font: 'Great Vibes, cursive', label: 'Formal' },
 ];
+
+// Simple confetti animation using canvas
+function ConfettiEffect() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const pieces: any[] = [];
+    const colors = ['#3B82F6', '#34D399', '#FCD34D', '#F87171', '#A78BFA', '#60A5FA'];
+
+    for (let i = 0; i < 150; i++) {
+      pieces.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height - canvas.height,
+        w: Math.random() * 10 + 5,
+        h: Math.random() * 6 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        speed: Math.random() * 3 + 2,
+        rotSpeed: Math.random() * 4 - 2,
+      });
+    }
+
+    let frame: number;
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pieces.forEach(p => {
+        ctx.save();
+        ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+        ctx.rotate((p.rotation * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+        p.y += p.speed;
+        p.rotation += p.rotSpeed;
+        if (p.y > canvas.height) p.y = -10;
+      });
+      frame = requestAnimationFrame(animate);
+    };
+    animate();
+
+    const timeout = setTimeout(() => cancelAnimationFrame(frame), 4000);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timeout); };
+  }, []);
+
+  return (
+    <canvas ref={canvasRef} style={{ position: 'fixed', top: 0, left: 0, pointerEvents: 'none', zIndex: 9999 }} />
+  );
+}
 
 async function generateSignedPdfBlob(docUrl: string, signerName: string, fontFamily: string, signatureFields: any[], stampBase64?: string): Promise<Uint8Array> {
   const canvas = document.createElement('canvas');
@@ -104,6 +159,7 @@ export default function SignPage() {
   const [previewBlobUrl, setPreviewBlobUrl] = useState('');
   const [signedPdfBytes, setSignedPdfBytes] = useState<Uint8Array | null>(null);
   const [stampBase64, setStampBase64] = useState<string | undefined>(undefined);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const pdfWidth = window.innerWidth < 600 ? window.innerWidth - 48 : 620;
 
@@ -119,7 +175,7 @@ export default function SignPage() {
   }, [token]);
 
   const handlePreview = async () => {
-    if (!signerName.trim()) { setError('Please enter your name!'); return; }
+    if (!signerName.trim()) { toast.error('Please enter your name!'); return; }
     setProcessing(true); setError('');
     const currentStyle = SIGNATURE_STYLES.find(s => s.id === selectedStyle);
     try {
@@ -130,7 +186,8 @@ export default function SignPage() {
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       setPreviewBlobUrl(URL.createObjectURL(blob));
       setStep('preview');
-    } catch (err) { console.error(err); setError('Failed to generate preview.'); }
+      toast.success('Preview ready!');
+    } catch (err) { console.error(err); toast.error('Failed to generate preview.'); }
     finally { setProcessing(false); }
   };
 
@@ -144,18 +201,20 @@ export default function SignPage() {
       a.href = url; a.download = 'signed_' + doc.original_name; a.click();
       URL.revokeObjectURL(url);
       await api.post(`/api/signers/sign/${token}`, { name: signerName });
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 4000);
       setStep('done');
-    } catch { setError('Failed to complete signing.'); }
+    } catch { toast.error('Failed to complete signing.'); }
     finally { setProcessing(false); }
   };
 
   const handleReject = async () => {
-    if (!rejectReason.trim()) { setError('Please provide a reason.'); return; }
+    if (!rejectReason.trim()) { toast.error('Please provide a reason.'); return; }
     setProcessing(true);
     try {
       await api.post(`/api/signers/reject/${token}`, { reason: rejectReason });
       setStep('rejected');
-    } catch { setError('Failed to reject.'); }
+    } catch { toast.error('Failed to reject.'); }
     finally { setProcessing(false); }
   };
 
@@ -182,14 +241,17 @@ export default function SignPage() {
   );
 
   if (step === 'done') return (
-    <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", padding: 24 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>✅</div>
-        <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Signed!</h2>
-        <p style={{ fontSize: 14, color: '#64748B', marginBottom: 8 }}>Your signed PDF has been downloaded.</p>
-        <p style={{ fontSize: 12, color: '#64748B' }}>You can close this tab.</p>
+    <>
+      {showConfetti && <ConfettiEffect />}
+      <div style={{ minHeight: '100vh', background: '#0C0C14', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", padding: 24 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 36, margin: '0 auto 24px' }}>✅</div>
+          <h2 style={{ fontFamily: 'Playfair Display, serif', fontSize: 36, color: 'white', marginBottom: 12 }}>Document Signed!</h2>
+          <p style={{ fontSize: 14, color: '#64748B', marginBottom: 8 }}>Your signed PDF has been downloaded.</p>
+          <p style={{ fontSize: 12, color: '#64748B' }}>You can close this tab.</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 
   if (step === 'rejected') return (
@@ -247,12 +309,6 @@ export default function SignPage() {
             })}
           </div>
 
-          {error && (
-            <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', padding: '12px 16px', borderRadius: 4, fontSize: 13, marginBottom: 20 }}>
-              ⚠ {error}
-            </div>
-          )}
-
           {/* STEP 1 — Review */}
           {step === 'review' && (
             <div className="fade-in">
@@ -292,9 +348,7 @@ export default function SignPage() {
                       const sigRes = await api.get(`/api/signatures/${doc.id}`);
                       const fields = (sigRes.data.signatures || []).filter((f: any) => f.x > 0 && f.y > 0);
                       const hasSignatureOrDate = fields.some((f: any) => f.type === 'signature' || f.type === 'date' || !f.type);
-                      
                       if (!hasSignatureOrDate && fields.length > 0) {
-                        // Only stamp  — sign step skip, direct preview
                         setProcessing(true);
                         const pdfBytes = await generateSignedPdfBlob(doc.file_url, 'Stamp', 'Arial', fields, stampBase64);
                         setSignedPdfBytes(pdfBytes);

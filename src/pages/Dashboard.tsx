@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
+import toast from "react-hot-toast";
 
 interface Doc {
   id: string;
@@ -14,17 +15,17 @@ interface Doc {
 function MultipleEmailInvite({ docId, onSuccess, onClose }: { docId: string; onSuccess: () => void; onClose: () => void }) {
   const [emails, setEmails] = useState("");
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
 
   const handleSend = async () => {
     const emailList = emails.split(",").map(e => e.trim()).filter(e => e.includes("@"));
-    if (!emailList.length) { setError("Please enter valid email addresses."); return; }
-    setSending(true); setError("");
+    if (!emailList.length) { toast.error("Please enter valid email addresses."); return; }
+    setSending(true);
     try {
       await api.post(`/api/signers/${docId}/invite`, { emails: emailList });
+      toast.success("Invitations sent successfully!");
       onSuccess();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to send invitations.");
+      toast.error(err.response?.data?.error || "Failed to send invitations.");
     } finally {
       setSending(false);
     }
@@ -37,7 +38,6 @@ function MultipleEmailInvite({ docId, onSuccess, onClose }: { docId: string; onS
       `}</style>
       <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <p style={{ fontSize: 10, letterSpacing: 3, textTransform: 'uppercase', color: '#475569', marginBottom: 12 }}>Send for Signing</p>
-        {error && <p style={{ fontSize: 12, color: '#F87171', marginBottom: 8 }}>⚠ {error}</p>}
         <textarea
           value={emails}
           onChange={e => setEmails(e.target.value)}
@@ -68,8 +68,6 @@ export default function Dashboard() {
   const [documents, setDocuments] = useState<Doc[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [sharingDocId, setSharingDocId] = useState("");
   const [filter, setFilter] = useState("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -79,7 +77,7 @@ export default function Dashboard() {
       const res = await api.get("/api/docs");
       setDocuments(res.data.documents);
     } catch {
-      setError("Failed to load documents.");
+      toast.error("Failed to load documents.");
     } finally {
       setLoading(false);
     }
@@ -90,16 +88,17 @@ export default function Dashboard() {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.type !== "application/pdf") { setError("Only PDF files allowed!"); return; }
-    setUploading(true); setError(""); setSuccess("");
+    if (file.type !== "application/pdf") { toast.error("Only PDF files allowed!"); return; }
+    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
+    const uploadToast = toast.loading("Uploading document...");
     try {
       await api.post("/api/docs/upload", formData, { headers: { "Content-Type": "multipart/form-data" } });
-      setSuccess("Document uploaded successfully!");
+      toast.success("Document uploaded successfully!", { id: uploadToast });
       fetchDocuments();
     } catch (err: any) {
-      setError(err.response?.data?.error || "Upload failed.");
+      toast.error(err.response?.data?.error || "Upload failed.", { id: uploadToast });
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -110,10 +109,10 @@ export default function Dashboard() {
     if (!window.confirm("Are you sure you want to delete this document?")) return;
     try {
       await api.delete(`/api/docs/${docId}`);
-      setSuccess("Document deleted!");
+      toast.success("Document deleted!");
       fetchDocuments();
     } catch {
-      setError("Failed to delete document.");
+      toast.error("Failed to delete document.");
     }
   };
 
@@ -175,18 +174,6 @@ export default function Dashboard() {
             </h1>
             <p style={{ fontSize: 13, color: '#64748B' }}>Upload, manage and send documents for signing</p>
           </div>
-
-          {/* Alerts */}
-          {error && (
-            <div className="fade-in" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#F87171', padding: '12px 16px', borderRadius: 4, fontSize: 13, marginBottom: 20 }}>
-              ⚠ {error}
-            </div>
-          )}
-          {success && (
-            <div className="fade-in" style={{ background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)', color: '#34D399', padding: '12px 16px', borderRadius: 4, fontSize: 13, marginBottom: 20 }}>
-              ✓ {success}
-            </div>
-          )}
 
           {/* Upload Zone */}
           <div className="upload-zone fade-in"
@@ -295,7 +282,7 @@ export default function Dashboard() {
                     {sharingDocId === doc.id && (
                       <MultipleEmailInvite
                         docId={doc.id}
-                        onSuccess={() => { setSuccess("Invitations sent!"); setSharingDocId(""); fetchDocuments(); }}
+                        onSuccess={() => { setSharingDocId(""); fetchDocuments(); }}
                         onClose={() => setSharingDocId("")}
                       />
                     )}
